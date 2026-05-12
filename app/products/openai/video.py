@@ -12,7 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, Awaitable, Callable
+from typing import Any, AsyncGenerator, Awaitable, Callable, Literal, cast
 from urllib.parse import urlparse
 
 import orjson
@@ -62,6 +62,7 @@ _VIDEO_OBJECT = "video"
 _VIDEO_JOB_TTL_S = 3600
 _VIDEO_EXTENSION_REF_TYPE = "ORIGINAL_REF_TYPE_VIDEO_EXTENSION"
 _SUPPORTED_VIDEO_LENGTHS = frozenset({6, 10, 12, 16, 20})
+_INPUT_REFERENCE_MODES = frozenset({"reference", "image_to_video"})
 _VIDEO_SIZE_MAP: dict[str, tuple[str, str]] = {
     "720x1280": ("9:16", "720p"),
     "1280x720": ("16:9", "720p"),
@@ -195,6 +196,19 @@ def _resolve_video_preset(value: str | None, *, default: str = "custom") -> str:
     return normalized
 
 
+def _resolve_input_reference_mode(
+    value: str | None, *, default: str = "reference"
+) -> Literal["reference", "image_to_video"]:
+    normalized = (value or default).strip().lower()
+    if normalized not in _INPUT_REFERENCE_MODES:
+        allowed = ", ".join(sorted(_INPUT_REFERENCE_MODES))
+        raise ValidationError(
+            f"input_reference_mode must be one of [{allowed}]",
+            param="input_reference_mode",
+        )
+    return cast(Literal["reference", "image_to_video"], normalized)
+
+
 def _build_segment_lengths(seconds: int) -> list[int]:
     if seconds == 6:
         return [6]
@@ -219,6 +233,7 @@ def _video_create_payload(
     video_length: int,
     preset: str,
     image_references: list[str] | None = None,
+    input_reference_mode: Literal["reference", "image_to_video"] = "reference",
 ) -> dict[str, Any]:
     video_gen_config: dict[str, Any] = {
         "parentPostId": parent_post_id,
@@ -227,8 +242,12 @@ def _video_create_payload(
         "resolutionName": resolution_name,
     }
     if image_references:
-        video_gen_config["isVideoEdit"] = False
-        video_gen_config["isReferenceToVideo"] = True
+        if input_reference_mode == "image_to_video":
+            video_gen_config["isVideoEdit"] = True
+            video_gen_config["isReferenceToVideo"] = False
+        else:
+            video_gen_config["isVideoEdit"] = False
+            video_gen_config["isReferenceToVideo"] = True
         video_gen_config["imageReferences"] = image_references
     return {
         "temporary": True,
@@ -638,6 +657,7 @@ async def _generate_video_with_token(
     preset: str,
     timeout_s: float,
     input_references: list[dict[str, Any]] | None = None,
+    input_reference_mode: Literal["reference", "image_to_video"] = "reference",
     progress_cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> _VideoArtifact:
     references: list[_VideoReference] = []
@@ -676,6 +696,7 @@ async def _generate_video_with_token(
                 image_references=[r.content_url for r in references]
                 if references
                 else None,
+                input_reference_mode=input_reference_mode,
             )
             referer = "https://grok.com/imagine"
         else:
@@ -725,6 +746,7 @@ async def _run_video_generation(
     seconds: int,
     preset: str = "custom",
     input_references: list[dict[str, Any]] | None = None,
+    input_reference_mode: Literal["reference", "image_to_video"] = "reference",
     progress_cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> _VideoArtifact:
     async def _runner(token: str, timeout_s: float) -> _VideoArtifact:
@@ -737,6 +759,7 @@ async def _run_video_generation(
             preset=preset,
             timeout_s=timeout_s,
             input_references=input_references,
+            input_reference_mode=input_reference_mode,
             progress_cb=progress_cb,
         )
 
@@ -831,6 +854,7 @@ async def _run_video_job(
     seconds: int,
     preset: str | None,
     input_references: list[dict[str, Any]] | None = None,
+    input_reference_mode: str | None = None,
 ) -> None:
     try:
         await _set_job_status(job, status="in_progress", progress=1)
@@ -840,6 +864,9 @@ async def _run_video_job(
             default=default_resolution_name,
         )
         resolved_preset = _resolve_video_preset(preset)
+        resolved_input_reference_mode = _resolve_input_reference_mode(
+            input_reference_mode
+        )
         spec = resolve_model(job.model)
 
         from app.dataplane.account import _directory as _acct_dir
@@ -876,6 +903,7 @@ async def _run_video_job(
                 preset=resolved_preset,
                 timeout_s=timeout_s,
                 input_references=input_references,
+                input_reference_mode=resolved_input_reference_mode,
                 progress_cb=_progress,
             )
             raw, _mime = await _download_video_bytes(token, artifact.video_url)
@@ -922,6 +950,7 @@ async def create_video(
     resolution_name: str | None = None,
     preset: str | None = None,
     input_references: list[dict[str, Any]] | None = None,
+    input_reference_mode: str | None = None,
 ) -> dict[str, Any]:
     spec = model_registry.get(model)
     if spec is None or not spec.enabled or not spec.is_video():
@@ -937,6 +966,7 @@ async def create_video(
     _aspect_ratio, default_resolution_name = _resolve_video_size(normalized_size)
     _resolve_video_resolution_name(resolution_name, default=default_resolution_name)
     _resolve_video_preset(preset)
+    _resolve_input_reference_mode(input_reference_mode)
 
     job = _VideoJob(
         id=f"video_{uuid.uuid4().hex}",
@@ -957,6 +987,7 @@ async def create_video(
             seconds=normalized_seconds,
             preset=preset,
             input_references=input_references,
+            input_reference_mode=input_reference_mode,
         )
     )
     asyncio.create_task(_expire_video_job(job.id))

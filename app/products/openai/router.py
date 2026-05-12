@@ -472,6 +472,9 @@ async def videos_create(
     preset: Annotated[
         Literal["fun", "normal", "spicy", "custom"] | None, Form()
     ] = None,
+    input_reference_mode: Annotated[
+        Literal["reference", "image_to_video"] | None, Form()
+    ] = None,
     input_reference: Annotated[
         list[UploadFile] | None, File(alias="input_reference[]")
     ] = None,
@@ -493,6 +496,7 @@ async def videos_create(
         resolution_name=resolution_name,
         preset=preset,
         input_references=references_payload,
+        input_reference_mode=input_reference_mode,
     )
     return JSONResponse(result)
 
