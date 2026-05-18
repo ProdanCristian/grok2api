@@ -423,6 +423,8 @@
         "userAgent": { "label": "User-Agent" },
         "cfCookies": { "label": "Cookies Cloudflare" },
         "flaresolverrUrl": { "label": "URL FlareSolverr" },
+        "flaresolverrUseEgressProxy": { "label": "FS utilise le proxy d’egress" },
+        "flaresolverrRetryDirect": { "label": "FS réessaie sans proxy" },
         "challengeTimeout": { "label": "Délai du challenge (s)" },
         "refreshInterval": { "label": "Intervalle d’actualisation (s)" },
         "maxRetries": { "label": "Limite de reprise de compte" },

@@ -88,6 +88,11 @@ class ProxyDirectory:
             clearance.cf_clearance,
             clearance.browser,
             cfg.get_int("proxy.clearance.timeout_sec", 60),
+            cfg.get_bool("proxy.clearance.flaresolverr_use_egress_proxy", True),
+            cfg.get_bool(
+                "proxy.clearance.flaresolverr_retry_direct_when_no_cookies",
+                False,
+            ),
         )
 
         nodes: list[EgressNode] = []

@@ -554,6 +554,14 @@
           "label": "FlareSolverr URL",
           "desc": "HTTP endpoint for the FlareSolverr instance."
         },
+        "flaresolverrUseEgressProxy": {
+          "label": "FlareSolverr uses egress proxy",
+          "desc": "When enabled, Grok2API forwards the active egress proxy URL to FlareSolverr so clearance is solved on the same exit IP as API traffic. Disable if your proxies return empty cookies from FlareSolverr (tokens may then be tied to FlareSolverr’s IP instead)."
+        },
+        "flaresolverrRetryDirect": {
+          "label": "Retry FlareSolverr without proxy on empty cookies",
+          "desc": "If the proxied solve returns status ok but no cookies, retry once without forwarding a proxy. Cloudflare may reject tokens that do not match your proxy egress."
+        },
         "challengeTimeout": {
           "label": "Challenge Timeout (s)",
           "desc": "Maximum time allowed for FlareSolverr to complete the Cloudflare challenge."

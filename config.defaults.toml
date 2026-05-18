@@ -96,6 +96,10 @@ user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 browser = "chrome136"
 # FlareSolverr 服务地址
 flaresolverr_url = ""
+# 是否在 FlareSolverr 请求里附带当前 egress 代理（应与 grok 请求出口一致；部分代理会导致 FS 返回空 cookies）
+flaresolverr_use_egress_proxy = true
+# 若带代理首次得到 status=ok 但 cookies 为空，再尝试不带代理（令牌出口可能与代理不一致，慎用）
+flaresolverr_retry_direct_when_no_cookies = false
 # 挑战等待超时（秒）
 timeout_sec = 60
 # Clearance 刷新间隔（秒）

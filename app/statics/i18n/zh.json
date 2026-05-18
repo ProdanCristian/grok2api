@@ -554,6 +554,14 @@
           "label": "FlareSolverr URL",
           "desc": "FlareSolverr 实例的 HTTP 服务地址。"
         },
+        "flaresolverrUseEgressProxy": {
+          "label": "FlareSolverr 使用 egress 代理",
+          "desc": "开启时把当前请求的 egress 代理传给 FlareSolverr，使 clearance 与 API 流量同出口 IP。若代理导致 FlareSolverr 返回空 cookies 可关闭（此时 cookie 可能与 FlareSolverr 实例出口 IP 绑定）。"
+        },
+        "flaresolverrRetryDirect": {
+          "label": "空 cookie 时 FlareSolverr 直连重试",
+          "desc": "若带代理求解为 ok 但 cookies 为空，再试一次不传代理。Cloudflare 可能不接受与代理出口不匹配的令牌。"
+        },
         "challengeTimeout": {
           "label": "挑战超时（秒）",
           "desc": "FlareSolverr 完成 Cloudflare 挑战允许的最长等待时长。"
