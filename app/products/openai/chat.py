@@ -477,6 +477,21 @@ async def completions(
         len(messages),
     )
 
+    # ── Console API 路由 (console.x.ai/v1/responses) ─────────────────────────
+    if spec.is_console_chat():
+        from .console_chat import completions as console_completions
+        return await console_completions(
+            model=model,
+            messages=messages,
+            stream=is_stream,
+            emit_think=emit_think,
+            temperature=temperature,
+            top_p=top_p,
+            tools=tools,
+            tool_choice=tool_choice,
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
     message, files = _extract_message(messages)
     if not message.strip():
         raise UpstreamError("Empty message after extraction", status=400)
@@ -527,6 +542,7 @@ async def completions(
                         ended = False
                         sieve = ToolSieve(tool_names)
                         tool_calls_emitted = False
+                        yield ": heartbeat\n\n"
                         async for line in _stream_chat(
                             token=token,
                             mode_id=ModeId(selected_mode_id),

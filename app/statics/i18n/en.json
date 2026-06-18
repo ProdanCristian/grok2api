@@ -184,6 +184,7 @@
     "export": "Export Data",
     "batchNsfw": "Enable NSFW",
     "batchNsfwDisable": "Disable NSFW",
+    "rowActionNotSupported": "Current status does not support this action",
     "batchRefresh": "Refresh Selected",
     "batchDisable": "Disable Selected",
     "batchRestore": "Restore Selected",
@@ -285,6 +286,8 @@
     "nsfwDisablingOne": "Disabling NSFW…",
     "nsfwDisableDone": "NSFW disable completed: {ok} succeeded, {fail} failed",
     "operationFailed": "Operation failed",
+    "autoNsfwOnImport": "Auto-enable NSFW after import",
+    "autoNsfwHint": "Requires additional time to detect account status",
     "unknown": "Unknown",
     "na": "—",
     "pool": {
@@ -306,7 +309,9 @@
       "disabled": "Disabled",
       "expired": "Expired",
       "invalid": "Abnormal"
-    }
+    },
+    "autoNsfwOnImport": "Auto-enable NSFW after import",
+    "autoNsfwHint": "Requires additional time to detect account status"
   },
   "config": {
     "pageTitle": "Grok2API - Configuration Management",

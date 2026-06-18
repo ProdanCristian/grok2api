@@ -131,22 +131,9 @@ window.renderWebuiHeader = async function renderWebuiHeader() {
   };
 
   const applyVersion = () => {
-    const right = mount.querySelector('.admin-header-right');
-    if (!right) return;
-    let node = mount.querySelector('#hd-version');
-    if (!appVersion) {
-      node?.remove();
-      return;
-    }
-    if (!node) {
-      node = document.createElement('span');
-      node.id = 'hd-version';
-      node.className = 'admin-header-version';
-      right.insertBefore(node, right.firstChild);
-    }
-    const value = `v${appVersion}`;
-    node.textContent = value;
-    node.title = value;
+    // 版本号显示已禁用
+    const node = mount.querySelector('#hd-version');
+    node?.remove();
   };
 
   await loadVersion();

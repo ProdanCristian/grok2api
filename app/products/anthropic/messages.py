@@ -316,7 +316,22 @@ async def create(
     msg_id      = _make_msg_id()
 
     # -------------------------------------------------------------------------
-    # Streaming
+    # Console 模型路由 — 走 console.x.ai，输出转为 Anthropic Messages 格式
+    # -------------------------------------------------------------------------
+    if spec.is_console_chat():
+        from .console_messages import create as console_messages_create
+        return await console_messages_create(
+            model=model,
+            messages=internal_messages,
+            stream=stream,
+            emit_think=emit_think,
+            temperature=temperature,
+            top_p=top_p,
+            msg_id=msg_id,
+        )
+
+    # -------------------------------------------------------------------------
+    # Streaming (grok.com path)
     # -------------------------------------------------------------------------
     async def _run_stream() -> AsyncGenerator[str, None]:
         excluded: list[str] = []
@@ -364,6 +379,7 @@ async def create(
                     yield _sse("ping", {"type": "ping"})
 
                     ended = False
+                    yield ": heartbeat\n\n"
                     async for line in _stream_chat(
                         token     = token,
                         mode_id   = ModeId(selected_mode_id),

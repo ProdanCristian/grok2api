@@ -522,8 +522,8 @@ const SCHEMA_DEF = [
         title: '批量操作并发', titleKey: 'config.schema.groups.batchConcurrency',
         section: 'batch',
         fields: [
-          { key: 'nsfw_concurrency', label: '开启 NSFW 并发数', labelKey: 'config.schema.fields.nsfwConcurrency.label', type: 'number', desc: '批量开启 NSFW 时的 token 级并发数；每个 token 需经历三步网络请求。', descKey: 'config.schema.fields.nsfwConcurrency.desc' },
-          { key: 'refresh_concurrency', label: '刷新 Usage 并发数', labelKey: 'config.schema.fields.refreshConcurrency.label', type: 'number', desc: '批量刷新账户额度时的 token 级并发数。', descKey: 'config.schema.fields.refreshConcurrency.desc' },
+          { key: 'nsfw_concurrency', label: '开启 NSFW 并发数', labelKey: 'config.schema.fields.nsfwConcurrency.label', type: 'number', min: 1, max: 80, desc: '批量开启 NSFW 时的 token 级并发数；每个 token 需经历三步网络请求。', descKey: 'config.schema.fields.nsfwConcurrency.desc' },
+          { key: 'refresh_concurrency', label: '刷新 Usage 并发数', labelKey: 'config.schema.fields.refreshConcurrency.label', type: 'number', min: 1, max: 80, desc: '批量刷新账户额度时的 token 级并发数。', descKey: 'config.schema.fields.refreshConcurrency.desc' },
           { key: 'asset_upload_concurrency', label: '上传 Asset 并发数', labelKey: 'config.schema.fields.assetUploadConcurrency.label', type: 'number', desc: 'API 接收文件附件后触发的 Asset 上传任务，全局最大并发数，跨所有请求共享。', descKey: 'config.schema.fields.assetUploadConcurrency.desc' },
           { key: 'asset_list_concurrency', label: '查询 Asset 并发数', labelKey: 'config.schema.fields.assetListConcurrency.label', type: 'number', desc: 'list_assets 接口的全局最大并发数，跨所有请求共享。', descKey: 'config.schema.fields.assetListConcurrency.desc' },
           { key: 'asset_delete_concurrency', label: '删除 Asset 并发数', labelKey: 'config.schema.fields.assetDeleteConcurrency.label', type: 'number', desc: 'delete_asset 接口的全局最大并发数，同时作为管理后台批量清理的 token 级默认并发值。', descKey: 'config.schema.fields.assetDeleteConcurrency.desc' },
@@ -907,11 +907,16 @@ function _evalShowIf(showIf) {
 function _fullPath(section, key) { return `${section}.${key}`; }
 
 // Get the current value of a field from loaded config.
-function _getValue(section, key) { return _getByPath(_cfg, _fullPath(section, key)); }
+function _getValue(section, key, field) {
+  const value = _getByPath(_cfg, _fullPath(section, key));
+  return value === undefined && field && Object.prototype.hasOwnProperty.call(field, 'default')
+    ? field.default
+    : value;
+}
 
-function _getCurrentValue(section, key) {
+function _getCurrentValue(section, key, field) {
   const fp = _fullPath(section, key);
-  return fp in _dirty ? _dirty[fp] : _getValue(section, key);
+  return fp in _dirty ? _dirty[fp] : _getValue(section, key, field);
 }
 
 // ── Render ──────────────────────────────────────────────────────────────────
@@ -1004,7 +1009,7 @@ function renderInput(field, section, value) {
 
   const onChange = (v) => {
     const wasDirty = fp in _dirty;
-    const orig = _getValue(section, field.key);
+    const orig = _getValue(section, field.key, field);
     const same = String(orig) === String(v) || orig === v;
     if (same) delete _dirty[fp]; else _dirty[fp] = v;
     const isDirty = fp in _dirty;
@@ -1059,10 +1064,19 @@ function renderInput(field, section, value) {
   }
 
   if (field.type === 'number') {
-    const inp = _el('input', { class: 'cfg-number', type: 'number',
-      id: `field-${section}-${field.key}`, value: value ?? '' });
+    const attrs = { class: 'cfg-number', type: 'number',
+      id: `field-${section}-${field.key}`, value: value ?? '' };
+    if (field.min != null) attrs.min = field.min;
+    if (field.max != null) attrs.max = field.max;
+    const inp = _el('input', attrs);
     inp.addEventListener('input', () => {
-      const n = inp.value === '' ? '' : Number(inp.value);
+      let n = inp.value === '' ? '' : Number(inp.value);
+      // 强制限制在 min/max 范围内
+      if (typeof n === 'number' && !isNaN(n)) {
+        if (field.min != null && n < field.min) n = field.min;
+        if (field.max != null && n > field.max) n = field.max;
+        if (inp.value !== String(n)) inp.value = n;
+      }
       onChange(n);
     });
     return inp;
@@ -1095,7 +1109,7 @@ function renderInput(field, section, value) {
 
 function renderRow(field, section, tabId) {
   const fp      = _fullPath(section, field.key);
-  const value   = _getValue(section, field.key);
+  const value   = _getValue(section, field.key, field);
   const isDirty = fp in _dirty;
 
   const dot   = _el('span', { class: 'cfg-modified-dot' });
@@ -1111,8 +1125,9 @@ function renderRow(field, section, tabId) {
       'data-webui-link': 'true',
       onclick: () => window.open('/webui/login', '_blank', 'noopener,noreferrer'),
     });
+    btn._configField = field;
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5"/><path d="M10 14 19 5"/><path d="M19 14v5h-14v-14h5"/></svg>';
-    btn.disabled = !Boolean(_getCurrentValue(section, field.key));
+    btn.disabled = !Boolean(_getCurrentValue(section, field.key, field));
     labelChildren.push(btn);
   }
 
@@ -1257,7 +1272,7 @@ function _refreshDirtyState({ autoNormalizeSelects = true, changedPaths = null }
 
   const webuiLinkBtn = document.querySelector('[data-webui-link="true"]');
   if (webuiLinkBtn) {
-    const enabled = Boolean(_getCurrentValue('app', 'webui_enabled'));
+    const enabled = Boolean(_getCurrentValue('app', 'webui_enabled', webuiLinkBtn._configField));
     webuiLinkBtn.disabled = !enabled;
     webuiLinkBtn.title = enabled ? '打开 WebUI' : '启用 WebUI 后可打开';
     webuiLinkBtn.setAttribute('aria-label', webuiLinkBtn.title);

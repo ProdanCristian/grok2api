@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 
 from app.platform.logging.logger import logger
+from app.platform.config.snapshot import get_config
 from app.control.proxy.models import ProxyLease
 from app.dataplane.proxy.adapters.profile import ProxyProfile, resolve_proxy_profile
 
@@ -64,24 +65,19 @@ def _sanitize(value: Optional[str], *, field: str, strip_spaces: bool = False) -
 
 
 def _statsig_id() -> str:
-    """Generate a Statsig evaluation fallback ID.
-
-    The real browser's fetch interceptor tries to evaluate Statsig gates for
-    each request.  When the Statsig SDK is not yet initialised (headless,
-    first paint, etc.) it catches the error and falls back to::
-
-        btoa("x1:" + error.toString())
-
-    The server accepts this fallback.  We reproduce the exact format with
-    varied error messages to avoid a static fingerprint.
-    """
-    if random.choice((True, False)):
-        rand = "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
-        msg = f"x1:TypeError: Cannot read properties of null (reading 'children[\\'{rand}\\']')"
-    else:
-        rand = "".join(random.choices(string.ascii_lowercase, k=10))
-        msg = f"x1:TypeError: Cannot read properties of undefined (reading '{rand}')"
-    return base64.b64encode(msg.encode()).decode()
+    cfg = get_config()
+    if cfg.get_bool("features.dynamic_statsig", False):
+        if random.choice((True, False)):
+            rand = "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
+            msg = f"x1:TypeError: Cannot read properties of null (reading 'children['{rand}']')"
+        else:
+            rand = "".join(random.choices(string.ascii_lowercase, k=10))
+            msg = f"x1:TypeError: Cannot read properties of undefined (reading '{rand}')"
+        return base64.b64encode(msg.encode()).decode()
+    return (
+        "ZTpUeXBlRXJyb3I6IENhbm5vdCByZWFkIHByb3BlcnRpZXMgb2YgdW5kZWZpbmVkIChyZWFkaW5nICdjaGls"
+        "ZE5vZGVzJyk="
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -311,4 +307,54 @@ def build_ws_headers(
     return headers
 
 
-__all__ = ["build_http_headers", "build_sso_cookie", "build_ws_headers"]
+def build_console_headers(
+    sso_token: str,
+    *,
+    lease: ProxyLease | None = None,
+    content_type: str = "application/json",
+) -> dict[str, str]:
+    """Build headers for console.x.ai/v1/responses requests.
+
+    抓包确认的认证方式：
+    - Authorization: Bearer anonymous  （固定值）
+    - Cookie: sso=<token>; sso-rw=<token>; cf_clearance=...  （身份 + CF clearance）
+
+    cf_clearance 从 proxy lease 的 clearance profile 中获取（与 grok.com 共用同一套机制）。
+    """
+    tok = sso_token[4:] if sso_token.startswith("sso=") else sso_token
+    tok = _sanitize(tok, field="sso_token", strip_spaces=True)
+
+    # 复用现有 clearance profile（cf_clearance / user_agent）
+    profile = _resolve_profile(lease)
+    ua = _sanitize(profile.user_agent, field="user_agent")
+    cf_clearance = _sanitize(profile.cf_clearance, field="cf_clearance", strip_spaces=True)
+
+    cookie = f"sso={tok}; sso-rw={tok}"
+    if cf_clearance:
+        cookie += f"; cf_clearance={cf_clearance}"
+
+    headers: dict[str, str] = {
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Authorization": "Bearer anonymous",
+        "Content-Type": content_type,
+        "Cookie": cookie,
+        "Origin": "https://console.x.ai",
+        "Priority": "u=1, i",
+        "Referer": "https://console.x.ai/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "User-Agent": ua or (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/136.0.0.0 Safari/537.36"
+        ),
+        "x-cluster": "https://us-east-1.api.x.ai",
+    }
+    headers.update(_client_hints(profile.browser, profile.user_agent))
+    return headers
+
+
+__all__ = ["build_http_headers", "build_sso_cookie", "build_ws_headers", "build_console_headers"]

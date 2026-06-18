@@ -43,10 +43,14 @@ def _w(remaining: int, total: int, window_seconds: int) -> QuotaWindow:
 BASIC_FAST_LIMIT = 30
 BASIC_FAST_WINDOW_SECONDS = 86_400
 
+BASIC_CONSOLE_LIMIT = 30
+BASIC_CONSOLE_WINDOW_SECONDS = 1800
+
 BASIC_QUOTA_DEFAULTS = AccountQuotaSet(
     auto=_w(0, 0, 0),  # unsupported on basic accounts
     fast=_w(BASIC_FAST_LIMIT, BASIC_FAST_LIMIT, BASIC_FAST_WINDOW_SECONDS),
     expert=_w(0, 0, 0),  # unsupported on basic accounts
+    console=_w(BASIC_CONSOLE_LIMIT, BASIC_CONSOLE_LIMIT, BASIC_CONSOLE_WINDOW_SECONDS),
 )
 
 SUPER_QUOTA_DEFAULTS = AccountQuotaSet(
@@ -72,9 +76,9 @@ _POOL_DEFAULTS: dict[str, AccountQuotaSet] = {
 }
 
 _SUPPORTED_MODE_IDS_BY_POOL: dict[str, frozenset[int]] = {
-    "basic": frozenset((1,)),
-    "super": frozenset((0, 1, 2, 4)),
-    "heavy": frozenset((0, 1, 2, 3, 4)),
+    "basic": frozenset((1, 5)),
+    "super": frozenset((0, 1, 2, 4, 5)),
+    "heavy": frozenset((0, 1, 2, 3, 4, 5)),
 }
 
 # ---------------------------------------------------------------------------
@@ -102,6 +106,10 @@ def default_quota_set(pool: str) -> AccountQuotaSet:
         qs.grok_4_3 = _w(
             src.grok_4_3.remaining, src.grok_4_3.total, src.grok_4_3.window_seconds
         )
+    if src.console is not None:
+        qs.console = _w(
+            src.console.remaining, src.console.total, src.console.window_seconds
+        )
     return qs
 
 
@@ -117,7 +125,7 @@ def supported_mode_ids(pool: str) -> tuple[int, ...]:
     supported = _SUPPORTED_MODE_IDS_BY_POOL.get(
         pool, _SUPPORTED_MODE_IDS_BY_POOL["basic"]
     )
-    return tuple(mode_id for mode_id in (0, 1, 2, 3, 4) if mode_id in supported)
+    return tuple(mode_id for mode_id in (0, 1, 2, 3, 4, 5) if mode_id in supported)
 
 
 def default_quota_window(pool: str, mode_id: int) -> QuotaWindow | None:
@@ -156,6 +164,7 @@ def normalize_quota_set(pool: str, quota_set: AccountQuotaSet) -> AccountQuotaSe
     qs = AccountQuotaSet(auto=auto, fast=fast, expert=expert)
     qs.heavy = normalize_quota_window(pool, 3, quota_set.heavy)
     qs.grok_4_3 = normalize_quota_window(pool, 4, quota_set.grok_4_3)
+    qs.console = normalize_quota_window(pool, 5, quota_set.console) or defaults.console
     return qs
 
 
