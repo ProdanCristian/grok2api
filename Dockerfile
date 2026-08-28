@@ -69,7 +69,7 @@ COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/grok2api-entrypoint
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget -qO- http://127.0.0.1:8000/healthz >/dev/null || exit 1
+    CMD wget -qO- "http://127.0.0.1:${PORT:-8000}/healthz" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/grok2api-entrypoint"]
-CMD ["/app/grok2api", "--config", "/app/config.yaml", "--listen", "0.0.0.0:8000"]
+CMD ["/bin/sh", "-c", "exec /app/grok2api --config /app/config.yaml --listen 0.0.0.0:${PORT:-8000}"]

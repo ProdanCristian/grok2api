@@ -442,6 +442,31 @@ GROK2API_DATABASE_URL='postgresql://user:password@host:5432/grok2api?sslmode=req
 
 A non-empty `GROK2API_DATABASE_URL` overrides `database.postgres.dsn` and automatically selects the `postgres` driver. An empty value is ignored. Supported URL schemes are `postgres://` and `postgresql://`; SQLAlchemy's `postgresql+asyncpg://` form is rejected with a migration hint. The application does not implicitly read the generic `DATABASE_URL`; platforms that provide it can map it explicitly with `GROK2API_DATABASE_URL: "${DATABASE_URL}"`. Database configuration precedence is built-in defaults, `config.yaml`, then `GROK2API_DATABASE_URL`. The current CLI has no database override.
 
+### Railway
+
+The Docker image supports a Railway deployment without committing `config.yaml`.
+Create a service from this GitHub repository, then add these required service variables:
+
+```text
+GROK2API_JWT_SECRET=<at least 32 random characters>
+GROK2API_CREDENTIAL_ENCRYPTION_KEY=<base64-encoded 32-byte key>
+GROK2API_ADMIN_USERNAME=admin
+GROK2API_ADMIN_PASSWORD=<strong password with at least 8 characters>
+```
+
+Generate the two machine secrets locally with `openssl rand -hex 32` and
+`openssl rand -base64 32`. Railway supplies `PORT`; the container listens on it
+automatically and enables secure cookies when `RAILWAY_ENVIRONMENT_ID` is present.
+Set the service health-check path to `/healthz` and generate a public domain.
+
+For SQLite persistence, attach a Railway volume at `/app/data`. Railway mounts
+volumes at runtime, and the entrypoint gives the non-root application user access
+before startup. For PostgreSQL, add a Railway Postgres service and set
+`GROK2API_DATABASE_URL` to a reference to its `DATABASE_URL` variable.
+
+Advanced deployments can instead provide a complete configuration as
+`GROK2API_CONFIG_B64`, containing the base64-encoded contents of `config.yaml`.
+
 ### Client IPs behind a reverse proxy
 
 Request audits record the normalized client IPv4 or IPv6 address. Direct deployments need no extra configuration. Behind Nginx or another reverse proxy, configure both sides:

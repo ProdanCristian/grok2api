@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,12 @@ import (
 
 const (
 	DatabaseURLEnv                = "GROK2API_DATABASE_URL"
+	JWTSecretEnv                  = "GROK2API_JWT_SECRET"
+	CredentialEncryptionKeyEnv    = "GROK2API_CREDENTIAL_ENCRYPTION_KEY"
+	AdminUsernameEnv              = "GROK2API_ADMIN_USERNAME"
+	AdminPasswordEnv              = "GROK2API_ADMIN_PASSWORD"
+	SecureCookiesEnv              = "GROK2API_SECURE_COOKIES"
+	PublicAPIBaseURLEnv           = "GROK2API_PUBLIC_API_BASE_URL"
 	StatsigModeManual             = "manual"
 	StatsigModeURL                = "url"
 	ClearanceModeManual           = "manual"
@@ -398,16 +405,36 @@ func Load(path string) (Config, error) {
 // overrides after YAML and before CLI overrides. Empty values are ignored so
 // Compose can pass an optional variable without changing existing deployments.
 func applyEnvironmentOverrides(cfg *Config) error {
-	value := strings.TrimSpace(os.Getenv(DatabaseURLEnv))
-	if value == "" {
-		return nil
+	if value := strings.TrimSpace(os.Getenv(DatabaseURLEnv)); value != "" {
+		dsn, err := validatePostgresEnvironmentURL(value)
+		if err != nil {
+			return err
+		}
+		cfg.Database.Driver = "postgres"
+		cfg.Database.Postgres.DSN = dsn
 	}
-	dsn, err := validatePostgresEnvironmentURL(value)
-	if err != nil {
-		return err
+	if value := os.Getenv(JWTSecretEnv); value != "" {
+		cfg.Secrets.JWTSecret = value
 	}
-	cfg.Database.Driver = "postgres"
-	cfg.Database.Postgres.DSN = dsn
+	if value := os.Getenv(CredentialEncryptionKeyEnv); value != "" {
+		cfg.Secrets.CredentialEncryptionKey = value
+	}
+	if value := strings.TrimSpace(os.Getenv(AdminUsernameEnv)); value != "" {
+		cfg.BootstrapAdmin.Username = value
+	}
+	if value := os.Getenv(AdminPasswordEnv); value != "" {
+		cfg.BootstrapAdmin.Password = value
+	}
+	if value := strings.TrimSpace(os.Getenv(PublicAPIBaseURLEnv)); value != "" {
+		cfg.Frontend.PublicAPIBaseURL = value
+	}
+	if value := strings.TrimSpace(os.Getenv(SecureCookiesEnv)); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("%s must be true or false", SecureCookiesEnv)
+		}
+		cfg.Auth.SecureCookies = enabled
+	}
 	return nil
 }
 

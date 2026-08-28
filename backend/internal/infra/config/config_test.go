@@ -39,6 +39,48 @@ database:
 	}
 }
 
+func TestLoadAppliesEnvironmentOnlyDeploymentConfig(t *testing.T) {
+	t.Setenv(JWTSecretEnv, "12345678901234567890123456789012")
+	t.Setenv(CredentialEncryptionKeyEnv, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	t.Setenv(AdminUsernameEnv, "railway-admin")
+	t.Setenv(AdminPasswordEnv, "railway-password")
+	t.Setenv(SecureCookiesEnv, "true")
+	t.Setenv(PublicAPIBaseURLEnv, "https://grok2api.example.com")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Secrets.JWTSecret != "12345678901234567890123456789012" {
+		t.Fatal("JWT secret environment override was not applied")
+	}
+	if cfg.Secrets.CredentialEncryptionKey != "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" {
+		t.Fatal("credential encryption key environment override was not applied")
+	}
+	if cfg.BootstrapAdmin.Username != "railway-admin" || cfg.BootstrapAdmin.Password != "railway-password" {
+		t.Fatalf("bootstrap admin = %#v", cfg.BootstrapAdmin)
+	}
+	if !cfg.Auth.SecureCookies {
+		t.Fatal("secure cookies environment override was not applied")
+	}
+	if cfg.Frontend.PublicAPIBaseURL != "https://grok2api.example.com" {
+		t.Fatalf("public API base URL = %q", cfg.Frontend.PublicAPIBaseURL)
+	}
+}
+
+func TestLoadRejectsInvalidSecureCookiesEnvironmentValue(t *testing.T) {
+	t.Setenv(JWTSecretEnv, "12345678901234567890123456789012")
+	t.Setenv(CredentialEncryptionKeyEnv, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	t.Setenv(AdminUsernameEnv, "admin")
+	t.Setenv(AdminPasswordEnv, "password123")
+	t.Setenv(SecureCookiesEnv, "sometimes")
+
+	_, err := Load("")
+	if err == nil || !strings.Contains(err.Error(), SecureCookiesEnv) {
+		t.Fatalf("Load error = %v", err)
+	}
+}
+
 func TestLoadEmptyDatabaseURLKeepsYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	const yamlDSN = "postgres://yaml:secret@postgres.internal:5432/grok2api"
