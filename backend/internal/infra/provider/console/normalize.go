@@ -11,6 +11,7 @@ import (
 
 	auditdomain "github.com/chenyme/grok2api/backend/internal/domain/audit"
 	"github.com/chenyme/grok2api/backend/internal/infra/provider"
+	"github.com/chenyme/grok2api/backend/internal/infra/provider/cli"
 )
 
 var (
@@ -46,9 +47,27 @@ func normalizeRequestWithMetadata(body []byte, spec ModelSpec, metadata *provide
 	normalizeReasoning(payload, spec)
 	updateConsoleReasoningMetadata(payload, spec, requestedEffort, metadata)
 	ensureReasoningInclude(payload)
-	retainedClientTools := normalizeConsoleTools(payload)
+	retainedClientTools, err := normalizeConsoleTools(payload)
+	if err != nil {
+		return nil, err
+	}
 	normalizeConsoleToolChoice(payload, retainedClientTools)
+	ensureConsoleToolChoicePair(payload)
 	return json.Marshal(payload)
+}
+
+// ensureConsoleToolChoicePair enforces the upstream invariant that tool_choice
+// may only be sent when at least one valid tool declaration is present.
+func ensureConsoleToolChoicePair(payload map[string]any) {
+	choice, hasChoice := payload["tool_choice"]
+	if !hasChoice || choice == nil {
+		return
+	}
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		delete(payload, "tools")
+		delete(payload, "tool_choice")
+	}
 }
 
 func hasRecognizedConsoleReasoningEffort(payload map[string]any) bool {
@@ -241,18 +260,18 @@ func ensureReasoningInclude(payload map[string]any) {
 	payload["include"] = result
 }
 
-func normalizeConsoleTools(payload map[string]any) bool {
+func normalizeConsoleTools(payload map[string]any) (bool, error) {
 	value, exists := payload["tools"]
 	if !exists || value == nil {
 		delete(payload, "tools")
 		delete(payload, "tool_choice")
-		return false
+		return false, nil
 	}
 	tools, ok := value.([]any)
 	if !ok {
 		delete(payload, "tools")
 		delete(payload, "tool_choice")
-		return false
+		return false, nil
 	}
 	hasClientViewImage := hasConsoleFunctionTool(tools, "view_image")
 	result := make([]any, 0, len(tools))
@@ -315,6 +334,14 @@ func normalizeConsoleTools(payload map[string]any) bool {
 			clean := map[string]any{"type": "function", "name": strings.TrimSpace(name)}
 			for _, field := range []string{"description", "parameters", "strict"} {
 				if fieldValue, exists := tool[field]; exists {
+					if field == "parameters" {
+						normalized, _, err := cli.NormalizeBuildFunctionParametersRoot(fieldValue, "tools.parameters", strings.TrimSpace(name))
+						if err != nil {
+							return false, err
+						}
+						clean[field] = normalized
+						continue
+					}
 					clean[field] = fieldValue
 				}
 			}
@@ -331,10 +358,10 @@ func normalizeConsoleTools(payload map[string]any) bool {
 	if len(result) == 0 {
 		delete(payload, "tools")
 		delete(payload, "tool_choice")
-		return false
+		return false, nil
 	}
 	payload["tools"] = result
-	return retainedClientTools
+	return retainedClientTools, nil
 }
 
 func hasConsoleFunctionTool(tools []any, target string) bool {

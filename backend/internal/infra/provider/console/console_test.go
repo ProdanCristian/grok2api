@@ -114,6 +114,59 @@ func TestCatalogContainsAllConsoleModelsAndAliases(t *testing.T) {
 	}
 }
 
+func TestConsoleToolChoiceRequiresNonEmptyTools(t *testing.T) {
+	for name, payload := range map[string]map[string]any{
+		"missing tools": {"tool_choice": "auto"},
+		"nil tools":     {"tools": nil, "tool_choice": "required"},
+		"empty tools":   {"tools": []any{}, "tool_choice": "auto"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ensureConsoleToolChoicePair(payload)
+			if _, exists := payload["tool_choice"]; exists {
+				t.Fatalf("tool_choice remained without tools: %#v", payload)
+			}
+		})
+	}
+
+	payload := map[string]any{
+		"tools":       []any{map[string]any{"type": "web_search"}},
+		"tool_choice": "auto",
+	}
+	ensureConsoleToolChoicePair(payload)
+	if payload["tool_choice"] != "auto" || len(payload["tools"].([]any)) != 1 {
+		t.Fatalf("valid tool/tool_choice pair was changed: %#v", payload)
+	}
+}
+
+func TestNormalizeRequestDropsToolChoiceWhenToolsEmpty(t *testing.T) {
+	spec, ok := Resolve("grok-4.5")
+	if !ok {
+		t.Fatal("grok-4.5 missing")
+	}
+	for name, body := range map[string]string{
+		"missing tools": `{"model":"public","input":"hello","tool_choice":"auto"}`,
+		"null tools":    `{"model":"public","input":"hello","tools":null,"tool_choice":"none"}`,
+		"empty tools":   `{"model":"public","input":"hello","tools":[],"tool_choice":"required"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			normalized, err := normalizeRequest([]byte(body), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(normalized, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := payload["tools"]; exists {
+				t.Fatalf("tools remained without declarations: %#v", payload)
+			}
+			if _, exists := payload["tool_choice"]; exists {
+				t.Fatalf("tool_choice remained without tools: %#v", payload)
+			}
+		})
+	}
+}
+
 func TestConsoleVoiceErrorIsSanitizedAndPreservesRetryMetadata(t *testing.T) {
 	response := &http.Response{
 		StatusCode: http.StatusTooManyRequests,
@@ -333,6 +386,59 @@ func TestNormalizeRequestAppliesConsoleContract(t *testing.T) {
 	var statelessPayload map[string]any
 	if json.Unmarshal(stateless, &statelessPayload) != nil || statelessPayload["store"] != false || statelessPayload["previous_response_id"] != nil || statelessPayload["service_tier"] != nil || statelessPayload["prompt_cache_key"] != nil {
 		t.Fatalf("stateless payload = %#v", statelessPayload)
+	}
+}
+
+func TestNormalizeRequestLiftsFunctionParameterUnion(t *testing.T) {
+	spec, ok := Resolve("grok-4.3")
+	if !ok {
+		t.Fatal("grok-4.3 missing")
+	}
+	body, err := normalizeRequest([]byte(`{
+		"model":"grok-4.3",
+		"input":"hello",
+		"tools":[{"type":"function","name":"automation_update","parameters":{
+			"$defs":{
+				"View":{"type":"object","properties":{"mode":{"enum":["view"],"type":"string"}},"required":["mode"]},
+				"Create":{"oneOf":[{"type":"object","properties":{"mode":{"enum":["create"],"type":"string"}},"required":["mode"]}]}
+			},
+			"type":"object",
+			"properties":{},
+			"oneOf":[{"$ref":"#/$defs/View"},{"$ref":"#/$defs/Create"}]
+		}}]
+	}`), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	parameters := payload["tools"].([]any)[0].(map[string]any)["parameters"].(map[string]any)
+	branches, _ := parameters["oneOf"].([]any)
+	if len(branches) != 2 {
+		t.Fatalf("parameters = %#v", parameters)
+	}
+	for i, raw := range branches {
+		branch, _ := raw.(map[string]any)
+		if branch["type"] != "object" || branch["$ref"] != nil || branch["oneOf"] != nil {
+			t.Fatalf("branch[%d] = %#v", i, branch)
+		}
+	}
+}
+
+func TestNormalizeRequestIllegalFunctionRootNamesTool(t *testing.T) {
+	spec, ok := Resolve("grok-4.3")
+	if !ok {
+		t.Fatal("grok-4.3 missing")
+	}
+	_, err := normalizeRequest([]byte(`{
+		"model":"grok-4.3",
+		"input":"hello",
+		"tools":[{"type":"function","name":"automation_update","parameters":{"type":"string"}}]
+	}`), spec)
+	if err == nil || !strings.Contains(err.Error(), "automation_update") {
+		t.Fatalf("error=%v", err)
 	}
 }
 
